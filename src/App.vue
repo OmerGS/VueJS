@@ -1,183 +1,230 @@
 <template>
-  <form @submit="addTask" class="task-form">
-    <input type="text" placeholder="Ajouter une tâche" v-model="newTaskTitle" class="task-input"/>
-    <textarea v-model="newTaskDescription" placeholder="Ajouter une description (facultatif)" class="task-description"></textarea>
-    <button class="add-button">Add Task</button>
-  </form>
+  <div class="container">
+    <h1>Recettes</h1>
 
-  <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+    <div class="filters">
+      <label for="sortTime">Trier par temps :</label>
+      <select id="sortTime" v-model="selectedSortTime" @change="sortRecipes">
+        <option value="default">Par défaut</option>
+        <option value="asc">Temps croissant</option>
+        <option value="desc">Temps décroissant</option>
+      </select>
 
-  <p v-if="taskList.task.length === 0" class="empty-message">Vous n'avez aucune tâche !</p>
-  
-  <div v-else>
-    <ul class="task-list">
-      <li v-for="(task, index) in taskList.task" :key="index" class="task-item">
-        <label class="task-label">
-          <input type="checkbox" v-model="selectedTasks" :value="index" class="task-checkbox" />
-          <div class="task-content">
-            <span :class="{ completed: selectedTasks.includes(index) }" class="task-text">
-              {{ task.title }}
-            </span>
-            <p v-if="task.description" class="task-description-text">
-              {{ task.description }}
-            </p>
+      <label for="sortCategory">Trier par catégorie :</label>
+      <select id="sortCategory" v-model="selectedCategory" @change="filterRecipes">
+        <option value="all">Toutes les catégories</option>
+        <option v-for="(name, id) in categories" :key="id" :value="id">{{ name }}</option>
+      </select>
+    </div>
+
+    <div v-if="loading" class="loading">
+      <p>Chargement des recettes...</p>
+    </div>
+
+    <div v-else class="grid">
+      <div v-for="article in filteredArticles" :key="article.id" class="card">
+        <div class="image-container">
+          <img v-if="article.image" :src="article.image" alt="Image de la recette" />
+        </div>
+
+        <div class="content">
+          <h2>{{ article.acf.Nom || 'Nom non disponible' }}</h2>
+          <p class="description">{{ article.acf.description || 'Aucune description disponible.' }}</p>
+
+          <div class="details">
+            <p><strong>Temps :</strong> {{ article.acf.temps || 'Non précisé' }} min</p>
+            <p><strong>Difficulté :</strong> {{ difficulte[article.acf.difficulte] || 'Non précisé' }}</p>
+            <p><strong>Catégorie :</strong> {{ categories[article.acf.categorie] || 'Non classé' }}</p>
           </div>
-        </label>
-      </li>
-    </ul>
-  </div>  
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
+<script>
+export default {
+  data() {
+    return {
+      articles: [],
+      filteredArticles: [],
+      categories: {},
+      difficulte: {},
+      loading: true,
+      selectedSortTime: "default",
+      selectedCategory: "all",
+    };
+  },
+
+  methods: {
+    async fetchArticles() {
+      try {
+        const response = await fetch('https://omer.zagzig.fr/wp-json/wp/v2/recette?_embed');
+        const data = await response.json();
+
+        this.articles = await Promise.all(
+          data.map(async (article) => {
+            const imageUrl = await this.getImageUrl(article.acf.image);
+            return {
+              id: article.id,
+              acf: article.acf || {},
+              image: imageUrl,
+            };
+          })
+        );
+
+        this.filteredArticles = [...this.articles];
+        this.loading = false;
+      } catch (error) {
+        console.error('Erreur lors de la récupération des recettes', error);
+        this.loading = false;
+      }
+    },
+
+    async fetchCategories() {
+      try {
+        const response = await fetch('https://omer.zagzig.fr/wp-json/wp/v2/categorie');
+        const data = await response.json();
+
+        this.categories = data.reduce((acc, category) => {
+          acc[category.id] = category.name;
+          return acc;
+        }, {});
+      } catch (error) {
+        console.error('Erreur lors de la récupération des catégories', error);
+      }
+    },
+
+    async fetchDifficultes() {
+      try {
+        const response = await fetch('https://omer.zagzig.fr/wp-json/wp/v2/difficulte');
+        const data = await response.json();
+
+        this.difficulte = data.reduce((acc, diff) => {
+          acc[diff.id] = diff.name;
+          return acc;
+        }, {});
+      } catch (error) {
+        console.error('Erreur lors de la récupération des niveaux de difficulté', error);
+      }
+    },
+
+    async getImageUrl(imageId) {
+      if (!imageId) return '';
+
+      try {
+        const response = await fetch(`https://omer.zagzig.fr/wp-json/wp/v2/media/${imageId}`);
+        const data = await response.json();
+
+        return data.source_url || '';
+      } catch (error) {
+        console.error('Erreur lors de la récupération de l’image', error);
+        return '';
+      }
+    },
+
+    sortRecipes() {
+      if (this.selectedSortTime === "asc") {
+        this.filteredArticles.sort((a, b) => (a.acf.temps || 0) - (b.acf.temps || 0));
+      } else if (this.selectedSortTime === "desc") {
+        this.filteredArticles.sort((a, b) => (b.acf.temps || 0) - (a.acf.temps || 0));
+      } else {
+        this.filteredArticles = [...this.articles]; 
+      }
+    },
+
+    filterRecipes() {
+      if (this.selectedCategory === "all") {
+        this.filteredArticles = [...this.articles];
+      } else {
+        this.filteredArticles = this.articles.filter(article => article.acf.categorie == this.selectedCategory);
+      }
+      this.sortRecipes(); 
+    },
+  },
+
+  async mounted() {
+    await this.fetchCategories();
+    await this.fetchDifficultes();
+    await this.fetchArticles();
+  },
+};
+</script>
+
 <style scoped>
-/* Style général */
-body {
-  font-family: 'Arial', sans-serif;
-  background-color: #f4f7f6;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-}
-
-.task-form {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 20px;
-  width: 100%;
-  max-width: 500px;
-  background-color: #fff;
-  border-radius: 8px;
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
   padding: 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  font-family: 'Arial', sans-serif;
 }
 
-.task-input, .task-description {
-  padding: 12px;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin-bottom: 10px;
-  outline: none;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-.task-input:focus, .task-description:focus {
-  border-color: #3a8e6f;
-  box-shadow: 0 0 5px rgba(58, 142, 111, 0.3);
-}
-
-.add-button {
-  background-color: #3a8e6f;
-  color: white;
-  border: none;
-  padding: 12px 20px;
-  font-size: 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.add-button:hover {
-  background-color: #337f60;
-}
-
-.error-message {
-  color: red;
-  font-size: 14px;
-}
-
-.empty-message {
-  color: #666;
-  font-size: 16px;
+h1 {
   text-align: center;
-  margin-top: 20px;
-}
-
-.task-list {
-  list-style-type: none;
-  padding: 0;
-}
-
-.task-item {
-  display: flex;
-  align-items: center;
-  background-color: #fff;
-  padding: 12px;
-  margin: 5px 0;
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: background-color 0.3s;
-}
-
-.task-item:hover {
-  background-color: #f1f1f1;
-}
-
-.task-label {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.task-checkbox {
-  margin-right: 15px;
-  transform: scale(1.2);
-}
-
-.task-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  width: 100%;
-}
-
-.task-text {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 2rem;
+  margin-bottom: 20px;
   color: #333;
 }
 
-.task-description-text {
-  font-size: 14px;
-  color: #888;
-  margin-top: 5px;
+.filters {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 20px;
 }
 
-.completed {
-  text-decoration: line-through;
-  color: #888;
+.filters label {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.filters select {
+  padding: 5px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  justify-content: center;
+}
+
+.card {
+  background: #fff;
+  border-radius: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: transform 0.3s ease-in-out;
+  border: 2px solid #f0f0f0;
+}
+
+.card:hover {
+  transform: scale(1.05);
+}
+
+.image-container {
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  border-radius: 10px 10px 0 0;
+}
+
+.image-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.content {
+  padding: 15px;
+}
+
+.loading {
+  text-align: center;
+  font-size: 18px;
+  margin-top: 20px;
 }
 </style>
-
-<script setup>
-import { ref } from 'vue';
-
-// Variables
-const taskList = ref({ task: [] });
-const newTaskTitle = ref('');
-const newTaskDescription = ref('');
-const selectedTasks = ref([]);
-const errorMessage = ref('');
-
-
-// Fonction
-const addTask = (event) => {
-  event.preventDefault();
-  
-  if (newTaskTitle.value.trim() === '') {
-    errorMessage.value = "Veuillez entrer une tâche valide !";
-    return;
-  }
-
-  taskList.value.task.push({
-    title: newTaskTitle.value,
-    description: newTaskDescription.value.trim() || 'Aucune description',
-  });
-
-  newTaskTitle.value = '';
-  newTaskDescription.value = '';
-  errorMessage.value = '';
-};
-</script>
