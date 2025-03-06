@@ -10,10 +10,16 @@
         <option value="desc">Temps décroissant</option>
       </select>
 
-      <label for="sortCategory">Trier par catégorie :</label>
+      <label for="sortCategory">Filtrer par catégorie :</label>
       <select id="sortCategory" v-model="selectedCategory" @change="filterRecipes">
         <option value="all">Toutes les catégories</option>
         <option v-for="(name, id) in categories" :key="id" :value="id">{{ name }}</option>
+      </select>
+
+      <label for="sortDifficulty">Filtrer par difficulté :</label>
+      <select id="sortDifficulty" v-model="selectedDifficulty" @change="filterRecipes">
+        <option value="all">Toutes les difficultés</option>
+        <option v-for="(name, id) in difficulte" :key="id" :value="id">{{ name }}</option>
       </select>
     </div>
 
@@ -53,6 +59,7 @@ export default {
       loading: true,
       selectedSortTime: "default",
       selectedCategory: "all",
+      selectedDifficulty: "all",
     };
   },
 
@@ -129,17 +136,18 @@ export default {
       } else if (this.selectedSortTime === "desc") {
         this.filteredArticles.sort((a, b) => (b.acf.temps || 0) - (a.acf.temps || 0));
       } else {
-        this.filteredArticles = [...this.articles]; 
+        this.filterRecipes();
       }
     },
 
     filterRecipes() {
-      if (this.selectedCategory === "all") {
-        this.filteredArticles = [...this.articles];
-      } else {
-        this.filteredArticles = this.articles.filter(article => article.acf.categorie == this.selectedCategory);
-      }
-      this.sortRecipes(); 
+      this.filteredArticles = this.articles.filter(article => {
+        const matchCategory = this.selectedCategory === "all" || article.acf.categorie == this.selectedCategory;
+        const matchDifficulty = this.selectedDifficulty === "all" || article.acf.difficulte == this.selectedDifficulty;
+        return matchCategory && matchDifficulty;
+      });
+
+      this.sortRecipes();
     },
   },
 
