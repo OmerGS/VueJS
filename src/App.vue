@@ -1,5 +1,5 @@
 <template>
-  <div class="container">
+  <div class="container" ref="container">
     <h1>Recettes</h1>
 
     <div class="filters">
@@ -28,7 +28,7 @@
     </div>
 
     <div v-else class="grid">
-      <div v-for="article in filteredArticles" :key="article.id" class="card">
+      <div v-for="article in visibleArticles" :key="article.id" class="card">
         <div class="image-container">
           <img v-if="article.image" :src="article.image" alt="Image de la recette" />
         </div>
@@ -45,6 +45,10 @@
         </div>
       </div>
     </div>
+
+    <div v-if="loadingMore" class="loading">
+      <p>Chargement de plus de recettes...</p>
+    </div>
   </div>
 </template>
 
@@ -53,13 +57,16 @@ export default {
   data() {
     return {
       articles: [],
-      filteredArticles: [],
+      visibleArticles: [],
       categories: {},
       difficulte: {},
       loading: true,
+      loadingMore: false,
       selectedSortTime: "default",
       selectedCategory: "all",
       selectedDifficulty: "all",
+      itemsPerPage: 4, // Nombre d'articles chargés par lot
+      currentIndex: 0,  // Indice actuel de pagination
     };
   },
 
@@ -81,6 +88,7 @@ export default {
         );
 
         this.filteredArticles = [...this.articles];
+        this.loadMoreRecipes(); // Charger les premiers articles visibles
         this.loading = false;
       } catch (error) {
         console.error('Erreur lors de la récupération des recettes', error);
@@ -130,6 +138,26 @@ export default {
       }
     },
 
+    loadMoreRecipes() {
+      if (this.loadingMore) return;
+
+      this.loadingMore = true;
+      setTimeout(() => {
+        const nextIndex = this.currentIndex + this.itemsPerPage;
+        this.visibleArticles = this.filteredArticles.slice(0, nextIndex);
+        this.currentIndex = nextIndex;
+        this.loadingMore = false;
+      }, 1000); // Simule un petit délai de chargement
+    },
+
+    handleScroll() {
+      const bottomReached = window.innerHeight + window.scrollY >= document.body.offsetHeight - 100;
+
+      if (bottomReached && this.currentIndex < this.filteredArticles.length) {
+        this.loadMoreRecipes();
+      }
+    },
+
     sortRecipes() {
       if (this.selectedSortTime === "asc") {
         this.filteredArticles.sort((a, b) => (a.acf.temps || 0) - (b.acf.temps || 0));
@@ -138,6 +166,10 @@ export default {
       } else {
         this.filterRecipes();
       }
+
+      this.currentIndex = 0;
+      this.visibleArticles = [];
+      this.loadMoreRecipes();
     },
 
     filterRecipes() {
@@ -151,10 +183,15 @@ export default {
     },
   },
 
-  async mounted() {
-    await this.fetchCategories();
-    await this.fetchDifficultes();
-    await this.fetchArticles();
+  mounted() {
+    this.fetchCategories();
+    this.fetchDifficultes();
+    this.fetchArticles();
+    window.addEventListener("scroll", this.handleScroll);
+  },
+
+  beforeUnmount() {
+    window.removeEventListener("scroll", this.handleScroll);
   },
 };
 </script>
